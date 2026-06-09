@@ -6,7 +6,7 @@ A TypeScript CLI tool for generating structured PR review checklists and Codex-r
 
 Frontend pull requests often require repeated checks for component structure, TypeScript safety, React Hook dependencies, accessibility, API handling, test coverage, and unnecessary complexity.
 
-`dev-pr-review-kit` helps developers prepare consistent PR review reports and AI-ready review prompts from a list of changed files.
+`dev-pr-review-kit` helps developers prepare consistent PR review reports and AI-ready review prompts from local git changes or a list of changed files.
 
 The project was created to reduce repetitive review preparation work and improve review quality in frontend development workflows.
 
@@ -23,6 +23,7 @@ The project was created to reduce repetitive review preparation work and improve
 
 - Generates a Markdown PR review report
 - Creates a Codex-ready review prompt
+- Collects changed files from local git diff
 - Supports a simple JSON input format
 - Built with TypeScript
 - Includes basic tests
@@ -36,13 +37,25 @@ npm install
 ## Usage
 
 ```bash
-npm run dev -- --input examples/changed-files.json
+npm run dev -- --base main
+```
+
+You can compare against a direct git revision:
+
+```bash
+npm run dev -- --from HEAD~1
 ```
 
 You can also specify a custom output file:
 
 ```bash
-npm run dev -- --input examples/changed-files.json --output report.md
+npm run dev -- --base main --output report.md
+```
+
+JSON input is still supported when you already have a changed-file list:
+
+```bash
+npm run dev -- --input examples/changed-files.json
 ```
 
 ## Example Input
@@ -103,6 +116,7 @@ npm run test
 src/
   analyzer.ts
   cli.ts
+  git-diff.ts
   index.ts
   prompt-builder.ts
   report-writer.ts
@@ -115,11 +129,11 @@ templates/
 
 tests/
   analyzer.test.ts
+  git-diff.test.ts
 ```
 
 ## Roadmap
 
-- Add Git diff support
 - Add GitHub Actions example
 - Add configurable review rules
 - Add OpenAI API integration
