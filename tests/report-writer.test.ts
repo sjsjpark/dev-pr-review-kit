@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { analyzeFiles } from '../src/analyzer.js';
+import { collectSecuritySignals } from '../src/review-summary.js';
 import {
   createJsonReport,
   createMarkdownReport,
@@ -15,6 +16,7 @@ describe('report writers', () => {
       analysis,
       risk: assessReviewRisk(analysis),
       suggestedVerifications: createSuggestedVerifications(analysis),
+      securitySignals: collectSecuritySignals(analysis),
       generatedAt: '2026-06-01T00:00:00.000Z',
     };
     const markdown = createMarkdownReport(context);
@@ -22,6 +24,8 @@ describe('report writers', () => {
     expect(markdown).toContain('## Risk Summary');
     expect(markdown).toContain('Suggested Verification');
     expect(markdown).toContain('npm run test');
+    expect(markdown).toContain('## Security Signals');
+    expect(markdown).toContain('- None');
   });
 
   it('creates valid json report payload', () => {
@@ -31,6 +35,7 @@ describe('report writers', () => {
       analysis,
       risk: assessReviewRisk(analysis),
       suggestedVerifications: createSuggestedVerifications(analysis),
+      securitySignals: collectSecuritySignals(analysis),
       generatedAt: '2026-06-01T00:00:00.000Z',
     };
 
@@ -38,6 +43,7 @@ describe('report writers', () => {
 
     expect(parsed.totalChangedFiles).toBe(1);
     expect(Array.isArray(parsed.suggestedVerifications)).toBe(true);
+    expect(Array.isArray((parsed as { securitySignals: unknown }).securitySignals)).toBe(true);
     expect(parsed.risk.level).toBe('Low');
   });
 });

@@ -1,6 +1,10 @@
 import { countTotalFiles, type AnalysisResult } from './analyzer.js';
 import { buildReviewPrompt } from './prompt-builder.js';
-import type { RiskAssessment, VerificationSuggestion } from './review-summary.js';
+import type {
+  type SecurityMatch,
+  type RiskAssessment,
+  type VerificationSuggestion,
+} from './review-summary.js';
 
 const section = (title: string, files: string[]): string => {
   const body = files.length > 0 ? files.map((file) => `- ${file}`).join('\n') : '- None';
@@ -18,10 +22,21 @@ const formatVerification = (items: VerificationSuggestion[]): string => {
   return `## Suggested Verification\n${body}`;
 };
 
+const formatSecurity = (signals: SecurityMatch[]): string => {
+  const body =
+    signals.length > 0
+      ? signals
+          .map((signal) => `${signal.file} (${signal.patterns.join(', ')})`)
+          .join('\n')
+      : '- None';
+  return `## Security Signals\n${body}`;
+};
+
 export type ReportContext = {
   analysis: AnalysisResult;
   files: string[];
   risk: RiskAssessment;
+  securitySignals: SecurityMatch[];
   suggestedVerifications: VerificationSuggestion[];
   generatedAt: string;
 };
@@ -67,6 +82,8 @@ ${section('Other Files', analysis.otherFiles)}
 
 ${formatVerification(suggestedVerifications)}
 
+${formatSecurity(context.securitySignals)}
+
 ## Review Checklist
 
 - [ ] Are TypeScript types explicit and safe?
@@ -92,6 +109,7 @@ export const createJsonReport = (context: ReportContext): string => {
     totalChangedFiles: total,
     files: context.files,
     analysis: context.analysis,
+    securitySignals: context.securitySignals,
     risk: context.risk,
     suggestedVerifications: context.suggestedVerifications,
   };

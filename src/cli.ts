@@ -9,7 +9,12 @@ import {
   createMarkdownReport,
   type ReportContext,
 } from './report-writer.js';
-import { assessReviewRisk, createSuggestedVerifications } from './review-summary.js';
+import { loadConfig } from './config.js';
+import {
+  assessReviewRisk,
+  collectSecuritySignals,
+  createSuggestedVerifications,
+} from './review-summary.js';
 import { filterFiles, parsePatternList } from './file-filter.js';
 
 type InputFile = {
@@ -27,11 +32,12 @@ const from = getArgValue('--from');
 const format = getArgValue('--format')?.toLowerCase() || 'markdown';
 const include = getArgValue('--include');
 const exclude = getArgValue('--exclude');
+const configPath = getArgValue('--config');
 const explicitOutputPath = getArgValue('--output');
 
 if (!inputPath && !base && !from) {
   console.error(
-    'Usage: dev-pr-review-kit (--input examples/changed-files.json | --base main | --from HEAD~1) [--format markdown|md|json] [--include ...] [--exclude ...] [--output report.md]',
+    'Usage: dev-pr-review-kit (--input examples/changed-files.json | --base main | --from HEAD~1) [--config path] [--format markdown|md|json] [--include ...] [--exclude ...] [--output report.md]',
   );
   process.exit(1);
 }
@@ -62,18 +68,41 @@ const files = inputPath
     })()
   : collectChangedFilesFromGit({ base, from });
 
+const config = (() => {
+  try {
+    return loadConfig(configPath ?? undefined);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Invalid config file.';
+    console.error(message);
+    process.exit(1);
+  }
+})();
+
+const includePatterns = include === undefined ? config.includePatterns : parsePatternList(include);
+const excludePatterns = exclude === undefined ? config.excludePatterns : parsePatternList(exclude);
+
 const filteredFiles = filterFiles(files, {
-  includePatterns: parsePatternList(include),
-  excludePatterns: parsePatternList(exclude),
+  includePatterns,
+  excludePatterns,
 });
 
 const analysis = analyzeFiles(filteredFiles);
-const risk = assessReviewRisk(analysis);
-const suggestedVerifications = createSuggestedVerifications(analysis);
+const securitySignals = collectSecuritySignals(analysis, config.securityPolicy);
+const risk = assessReviewRisk(
+  analysis,
+  config.reviewPolicy.riskWeights,
+  config.securityPolicy,
+);
+const suggestedVerifications = createSuggestedVerifications(
+  analysis,
+  config.reviewPolicy.verificationCommands,
+  config.securityPolicy,
+);
 const reportContext: ReportContext = {
   analysis,
   files: filteredFiles,
   risk,
+  securitySignals,
   suggestedVerifications,
   generatedAt: new Date().toISOString(),
 };

@@ -26,6 +26,7 @@ The project was created to reduce repetitive review preparation work and improve
 - Collects changed files from local git diff
 - Suggests PR review risk level with reasons
 - Suggests verification commands
+- Detects security-sensitive file patterns and includes security signals in reports
 - Supports a simple JSON input format
 - Supports markdown/json output
 - Supports include/exclude pattern filtering for file sets
@@ -48,6 +49,12 @@ You can compare against a direct git revision:
 
 ```bash
 npm run dev -- --from HEAD~1
+```
+
+Use a config file to control include/exclude, risk, verification, and security policy:
+
+```bash
+npm run dev -- --base main --config examples/.pr-review-kit.json
 ```
 
 You can also specify a custom output file:
@@ -107,6 +114,7 @@ JSON output includes:
 - files
 - analysis
 - risk
+- securitySignals
 - suggestedVerifications
 
 Example:
@@ -152,6 +160,7 @@ src/
 
 examples/
   changed-files.json
+  .pr-review-kit.json
 
 templates/
   review-prompt.md
@@ -159,6 +168,7 @@ templates/
 tests/
   analyzer.test.ts
   file-filter.test.ts
+  config.test.ts
   report-writer.test.ts
   git-diff.test.ts
   review-summary.test.ts
@@ -167,7 +177,7 @@ tests/
 ## Roadmap
 
 - Add GitHub Actions example
-- Add configurable review rules
+- Add advanced security policy profiles (team presets, compliance modes)
 - Add OpenAI API integration
 - Add support for monorepo frontend projects
 

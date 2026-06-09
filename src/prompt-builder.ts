@@ -12,6 +12,13 @@ export const buildReviewPrompt = (context: ReportContext): string => {
     .map((suggestion) => `- ${suggestion.command} - ${suggestion.reason}`)
     .join('\n');
 
+  const securitySignalsSection =
+    context.securitySignals.length > 0
+      ? context.securitySignals
+          .map((signal) => `${signal.file} (${signal.patterns.join(', ')})`)
+          .join('\n')
+      : '- None';
+
   const riskSummary = [
     `Overall risk: ${risk.level} (score ${risk.score})`,
     ...risk.reasons,
@@ -28,6 +35,9 @@ Focus on:
 - API integration risks
 - Missing or weak tests
 - Unnecessary complexity
+
+Security signals:
+${securitySignalsSection}
 
 Changed files:
 

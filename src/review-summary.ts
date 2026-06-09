@@ -2,15 +2,77 @@ import { countTotalFiles, type AnalysisResult } from './analyzer.js';
 
 type RiskLevel = 'Low' | 'Medium' | 'High';
 
+export type SecurityMatch = {
+  file: string;
+  patterns: string[];
+};
+
+export type RiskWeights = {
+  configFiles: number;
+  apiFiles: number;
+  apiWithoutTests: number;
+  hooks: number;
+  sharedComponents: number;
+};
+
+export type SecurityPolicy = {
+  enabled: boolean;
+  riskWeight: number;
+  suspiciousPatterns: string[];
+};
+
 export type VerificationSuggestion = {
   command: string;
   reason: string;
+};
+
+export type VerificationCommands = {
+  whenNoTests: string;
+  whenConfigOrApi: string;
+  whenUiChange: string;
+  whenStylesChanged: string;
+  whenSecuritySensitiveChange: string;
 };
 
 export type RiskAssessment = {
   level: RiskLevel;
   score: number;
   reasons: string[];
+};
+
+const DEFAULT_RISK_WEIGHTS: RiskWeights = {
+  configFiles: 2,
+  apiFiles: 1,
+  apiWithoutTests: 2,
+  hooks: 1,
+  sharedComponents: 1,
+};
+
+export const DEFAULT_VERIFICATION_COMMANDS: VerificationCommands = {
+  whenNoTests: 'npm run test',
+  whenConfigOrApi: 'npm run build',
+  whenUiChange: 'npm run test',
+  whenStylesChanged: 'npm run test',
+  whenSecuritySensitiveChange: 'npm run test',
+};
+
+export const DEFAULT_SECURITY_POLICY: SecurityPolicy = {
+  enabled: true,
+  riskWeight: 2,
+  suspiciousPatterns: [
+    'auth',
+    'oauth',
+    'token',
+    'session',
+    'credential',
+    'api-key',
+    'apikey',
+    'secret',
+    'password',
+    'private-key',
+    'security',
+    'csrf',
+  ],
 };
 
 const SHARED_COMPONENT_PATTERN = /(^|\/)(shared|common)(\/|$)/;
@@ -27,28 +89,87 @@ const toRiskLevel = (score: number): RiskLevel => {
   return 'Low';
 };
 
-export const assessReviewRisk = (analysis: AnalysisResult): RiskAssessment => {
+const createRiskConfig = (riskWeights?: Partial<RiskWeights>): RiskWeights => ({
+  ...DEFAULT_RISK_WEIGHTS,
+  ...riskWeights,
+});
+
+const normalizeSecurityPatterns = (patterns: string[] | undefined): string[] =>
+  [...new Set((patterns ?? [])
+    .map((pattern) => pattern.trim().toLowerCase())
+    .filter((pattern) => pattern.length > 0))];
+
+const createSecurityConfig = (policy?: Partial<SecurityPolicy>): SecurityPolicy => ({
+  ...DEFAULT_SECURITY_POLICY,
+  ...policy,
+  suspiciousPatterns: normalizeSecurityPatterns(policy?.suspiciousPatterns),
+});
+
+const collectSecuritySignals = (
+  analysis: AnalysisResult,
+  policy?: Partial<SecurityPolicy>,
+): SecurityMatch[] => {
+  const normalizedPolicy = createSecurityConfig(policy);
+  if (!normalizedPolicy.enabled) {
+    return [];
+  }
+
+  const allFiles = [
+    ...analysis.configFiles,
+    ...analysis.apiFiles,
+    ...analysis.reactComponents,
+    ...analysis.hooks,
+    ...analysis.styles,
+    ...analysis.tests,
+    ...analysis.otherFiles,
+  ];
+
+  return allFiles
+    .map((file) => {
+      const normalizedFile = file.toLowerCase();
+      const matchedPatterns = normalizedPolicy.suspiciousPatterns.filter((pattern) =>
+        normalizedFile.includes(pattern),
+      );
+      if (matchedPatterns.length === 0) {
+        return null;
+      }
+
+      return {
+        file,
+        patterns: matchedPatterns,
+      };
+    })
+    .filter((item): item is SecurityMatch => item !== null);
+};
+
+export const assessReviewRisk = (
+  analysis: AnalysisResult,
+  riskWeights?: Partial<RiskWeights>,
+  securityPolicy?: Partial<SecurityPolicy>,
+): RiskAssessment => {
   const reasons: string[] = [];
+  const normalizedWeights = createRiskConfig(riskWeights);
+  const securitySignals = collectSecuritySignals(analysis, securityPolicy);
   let score = 0;
   const total = countTotalFiles(analysis);
 
   if (analysis.configFiles.length > 0) {
-    score += 2;
+    score += normalizedWeights.configFiles;
     reasons.push('Configuration files changed; build and runtime behavior can be impacted.');
   }
 
   if (analysis.apiFiles.length > 0) {
-    score += 1;
+    score += normalizedWeights.apiFiles;
     reasons.push('API files changed; request/response contract compatibility should be reviewed.');
   }
 
   if (analysis.apiFiles.length > 0 && analysis.tests.length === 0) {
-    score += 2;
+    score += normalizedWeights.apiWithoutTests;
     reasons.push('API changes without any changed test file may increase regression risk.');
   }
 
   if (analysis.hooks.length > 0) {
-    score += 1;
+    score += normalizedWeights.hooks;
     reasons.push('Hook logic changed; lifecycle and dependency behavior should be re-validated.');
   }
 
@@ -56,12 +177,21 @@ export const assessReviewRisk = (analysis: AnalysisResult): RiskAssessment => {
     SHARED_COMPONENT_PATTERN.test(file.toLowerCase()),
   );
   if (changedSharedComponent) {
-    score += 1;
+    score += normalizedWeights.sharedComponents;
     reasons.push('Shared React components changed; ripple effects to multiple screens are likely.');
   }
 
   if (analysis.styles.length > 0 && total > 0 && total === analysis.styles.length) {
     reasons.push('Only style files changed; functional behavior risk is typically low.');
+  }
+
+  if (securitySignals.length > 0) {
+    score += securityPolicy?.enabled === false ? 0 : createSecurityConfig(securityPolicy).riskWeight;
+    reasons.push(
+      `Security-sensitive files changed: ${securitySignals
+        .map((signal) => `${signal.file} (${signal.patterns.join(', ')})`)
+        .join(', ')}`,
+    );
   }
 
   if (reasons.length === 0) {
@@ -91,13 +221,16 @@ const uniqueSuggestion = (items: VerificationSuggestion[]): VerificationSuggesti
 
 export const createSuggestedVerifications = (
   analysis: AnalysisResult,
+  commands: VerificationCommands = DEFAULT_VERIFICATION_COMMANDS,
+  securityPolicy?: Partial<SecurityPolicy>,
 ): VerificationSuggestion[] => {
   const suggestions: VerificationSuggestion[] = [];
+  const securitySignals = collectSecuritySignals(analysis, securityPolicy);
   const total = countTotalFiles(analysis);
 
   if (total > 0 && analysis.tests.length === 0) {
     suggestions.push({
-      command: 'npm run test',
+      command: commands.whenNoTests,
       reason:
         'No test file changed while implementation changed; full test run helps catch regressions early.',
     });
@@ -105,7 +238,7 @@ export const createSuggestedVerifications = (
 
   if (analysis.configFiles.length > 0 || analysis.apiFiles.length > 0) {
     suggestions.push({
-      command: 'npm run build',
+      command: commands.whenConfigOrApi,
       reason:
         'Build verifies configuration and API-adjacent changes do not break compilation or runtime entrypoints.',
     });
@@ -113,7 +246,7 @@ export const createSuggestedVerifications = (
 
   if (analysis.hooks.length > 0 || analysis.reactComponents.length > 0) {
     suggestions.push({
-      command: 'npm run test',
+      command: commands.whenUiChange,
       reason:
         'UI logic changes (Hooks/Components) should be validated with component and integration tests.',
     });
@@ -121,10 +254,20 @@ export const createSuggestedVerifications = (
 
   if (analysis.styles.length > 0) {
     suggestions.push({
-      command: 'npm run test',
+      command: commands.whenStylesChanged,
       reason: 'Style-only changes can still break visual regression tests or snapshots.',
+    });
+  }
+
+  if (securitySignals.length > 0 && securityPolicy?.enabled !== false) {
+    suggestions.push({
+      command: commands.whenSecuritySensitiveChange,
+      reason:
+        'Security-sensitive paths changed; run security-focused checks for data handling, secrets, and auth flows.',
     });
   }
 
   return uniqueSuggestion(suggestions);
 };
+
+export { collectSecuritySignals };

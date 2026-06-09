@@ -1,0 +1,25 @@
+{
+  "includePatterns": ["src/**/*", "templates/**/*"],
+  "excludePatterns": ["**/*.log", "dist/**", "build/**"],
+  "reviewPolicy": {
+    "riskWeights": {
+      "configFiles": 3,
+      "apiFiles": 1,
+      "apiWithoutTests": 2,
+      "hooks": 1,
+      "sharedComponents": 2
+    },
+    "verificationCommands": {
+      "whenNoTests": "npm run test",
+      "whenConfigOrApi": "npm run build",
+      "whenUiChange": "npm run test",
+      "whenStylesChanged": "npm run test",
+      "whenSecuritySensitiveChange": "npm run test"
+    }
+  },
+  "securityPolicy": {
+    "enabled": true,
+    "riskWeight": 2,
+    "suspiciousPatterns": ["auth", "token", "session", "secret", "api-key", "csrf", "credential"]
+  }
+}
