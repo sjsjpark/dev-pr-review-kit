@@ -92,11 +92,13 @@ const risk = assessReviewRisk(
   analysis,
   config.reviewPolicy.riskWeights,
   config.securityPolicy,
+  securitySignals,
 );
 const suggestedVerifications = createSuggestedVerifications(
   analysis,
   config.reviewPolicy.verificationCommands,
   config.securityPolicy,
+  securitySignals,
 );
 const reportContext: ReportContext = {
   analysis,

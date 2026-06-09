@@ -77,12 +77,29 @@ export const DEFAULT_SECURITY_POLICY: SecurityPolicy = {
 
 const SHARED_COMPONENT_PATTERN = /(^|\/)(shared|common)(\/|$)/;
 
+const RISK_LEVEL_THRESHOLD_LOW = 2;
+const RISK_LEVEL_THRESHOLD_HIGH = 4;
+const NO_IMPACT_MESSAGE = 'No high-impact patterns detected from the current file mix.';
+const STYLE_ONLY_MESSAGE = 'Only style files changed; functional behavior risk is typically low.';
+const SECURITY_RISK_MESSAGE_PREFIX = 'Security-sensitive files changed: ';
+const SECURITY_VERIFICATION_REASON =
+  'Security-sensitive paths changed; run security-focused checks for data handling, secrets, and auth flows.';
+
+const NO_TEST_COMMAND_REASON =
+  'No test file changed while implementation changed; full test run helps catch regressions early.';
+const CONFIG_API_RISK_REASON =
+  'Build verifies configuration and API-adjacent changes do not break compilation or runtime entrypoints.';
+const UI_CHANGE_VERIFICATION_REASON =
+  'UI logic changes (Hooks/Components) should be validated with component and integration tests.';
+const STYLES_CHANGED_VERIFICATION_REASON =
+  'Style-only changes can still break visual regression tests or snapshots.';
+
 const toRiskLevel = (score: number): RiskLevel => {
-  if (score >= 4) {
+  if (score >= RISK_LEVEL_THRESHOLD_HIGH) {
     return 'High';
   }
 
-  if (score >= 2) {
+  if (score >= RISK_LEVEL_THRESHOLD_LOW) {
     return 'Medium';
   }
 
@@ -105,6 +122,16 @@ const createSecurityConfig = (policy?: Partial<SecurityPolicy>): SecurityPolicy 
   suspiciousPatterns: normalizeSecurityPatterns(policy?.suspiciousPatterns),
 });
 
+const getAllAnalyzedFiles = (analysis: AnalysisResult): string[] => [
+  ...analysis.configFiles,
+  ...analysis.apiFiles,
+  ...analysis.reactComponents,
+  ...analysis.hooks,
+  ...analysis.styles,
+  ...analysis.tests,
+  ...analysis.otherFiles,
+];
+
 const collectSecuritySignals = (
   analysis: AnalysisResult,
   policy?: Partial<SecurityPolicy>,
@@ -114,17 +141,7 @@ const collectSecuritySignals = (
     return [];
   }
 
-  const allFiles = [
-    ...analysis.configFiles,
-    ...analysis.apiFiles,
-    ...analysis.reactComponents,
-    ...analysis.hooks,
-    ...analysis.styles,
-    ...analysis.tests,
-    ...analysis.otherFiles,
-  ];
-
-  return allFiles
+  return getAllAnalyzedFiles(analysis)
     .map((file) => {
       const normalizedFile = file.toLowerCase();
       const matchedPatterns = normalizedPolicy.suspiciousPatterns.filter((pattern) =>
@@ -146,10 +163,12 @@ export const assessReviewRisk = (
   analysis: AnalysisResult,
   riskWeights?: Partial<RiskWeights>,
   securityPolicy?: Partial<SecurityPolicy>,
+  securitySignals?: SecurityMatch[],
 ): RiskAssessment => {
   const reasons: string[] = [];
   const normalizedWeights = createRiskConfig(riskWeights);
-  const securitySignals = collectSecuritySignals(analysis, securityPolicy);
+  const normalizedSecurityPolicy = createSecurityConfig(securityPolicy);
+  const resolvedSecuritySignals = securitySignals ?? collectSecuritySignals(analysis, normalizedSecurityPolicy);
   let score = 0;
   const total = countTotalFiles(analysis);
 
@@ -182,20 +201,23 @@ export const assessReviewRisk = (
   }
 
   if (analysis.styles.length > 0 && total > 0 && total === analysis.styles.length) {
-    reasons.push('Only style files changed; functional behavior risk is typically low.');
+    reasons.push(STYLE_ONLY_MESSAGE);
   }
 
-  if (securitySignals.length > 0) {
-    score += securityPolicy?.enabled === false ? 0 : createSecurityConfig(securityPolicy).riskWeight;
+  if (resolvedSecuritySignals.length > 0) {
+    const securityWeight = normalizedSecurityPolicy.riskWeight;
+    if (securityPolicy?.enabled !== false) {
+      score += securityWeight;
+    }
     reasons.push(
-      `Security-sensitive files changed: ${securitySignals
+      `${SECURITY_RISK_MESSAGE_PREFIX}${resolvedSecuritySignals
         .map((signal) => `${signal.file} (${signal.patterns.join(', ')})`)
         .join(', ')}`,
     );
   }
 
   if (reasons.length === 0) {
-    reasons.push('No high-impact patterns detected from the current file mix.');
+    reasons.push(NO_IMPACT_MESSAGE);
   }
 
   return {
@@ -223,47 +245,44 @@ export const createSuggestedVerifications = (
   analysis: AnalysisResult,
   commands: VerificationCommands = DEFAULT_VERIFICATION_COMMANDS,
   securityPolicy?: Partial<SecurityPolicy>,
+  securitySignals?: SecurityMatch[],
 ): VerificationSuggestion[] => {
   const suggestions: VerificationSuggestion[] = [];
-  const securitySignals = collectSecuritySignals(analysis, securityPolicy);
+  const resolvedSecuritySignals = securitySignals ?? collectSecuritySignals(analysis, securityPolicy);
   const total = countTotalFiles(analysis);
 
   if (total > 0 && analysis.tests.length === 0) {
     suggestions.push({
       command: commands.whenNoTests,
-      reason:
-        'No test file changed while implementation changed; full test run helps catch regressions early.',
+      reason: NO_TEST_COMMAND_REASON,
     });
   }
 
   if (analysis.configFiles.length > 0 || analysis.apiFiles.length > 0) {
     suggestions.push({
       command: commands.whenConfigOrApi,
-      reason:
-        'Build verifies configuration and API-adjacent changes do not break compilation or runtime entrypoints.',
+      reason: CONFIG_API_RISK_REASON,
     });
   }
 
   if (analysis.hooks.length > 0 || analysis.reactComponents.length > 0) {
     suggestions.push({
       command: commands.whenUiChange,
-      reason:
-        'UI logic changes (Hooks/Components) should be validated with component and integration tests.',
+      reason: UI_CHANGE_VERIFICATION_REASON,
     });
   }
 
   if (analysis.styles.length > 0) {
     suggestions.push({
       command: commands.whenStylesChanged,
-      reason: 'Style-only changes can still break visual regression tests or snapshots.',
+      reason: STYLES_CHANGED_VERIFICATION_REASON,
     });
   }
 
-  if (securitySignals.length > 0 && securityPolicy?.enabled !== false) {
+  if (resolvedSecuritySignals.length > 0 && securityPolicy?.enabled !== false) {
     suggestions.push({
       command: commands.whenSecuritySensitiveChange,
-      reason:
-        'Security-sensitive paths changed; run security-focused checks for data handling, secrets, and auth flows.',
+      reason: SECURITY_VERIFICATION_REASON,
     });
   }
 
