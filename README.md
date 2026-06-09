@@ -24,7 +24,11 @@ The project was created to reduce repetitive review preparation work and improve
 - Generates a Markdown PR review report
 - Creates a Codex-ready review prompt
 - Collects changed files from local git diff
+- Suggests PR review risk level with reasons
+- Suggests verification commands
 - Supports a simple JSON input format
+- Supports markdown/json output
+- Supports include/exclude pattern filtering for file sets
 - Built with TypeScript
 - Includes basic tests
 
@@ -50,6 +54,18 @@ You can also specify a custom output file:
 
 ```bash
 npm run dev -- --base main --output report.md
+```
+
+JSON output is also available:
+
+```bash
+npm run dev -- --base main --format json --output report.json
+```
+
+You can filter input files by pattern:
+
+```bash
+npm run dev -- --base main --include "src/**" --exclude "**/*.test.ts,dist/**"
 ```
 
 JSON input is still supported when you already have a changed-file list:
@@ -79,8 +95,19 @@ The CLI generates a Markdown report with:
 
 - Changed file summary
 - File category breakdown
+- Risk summary
 - Review checklist
 - Codex-ready review prompt
+- Suggested verification commands
+
+JSON output includes:
+
+- generatedAt
+- totalChangedFiles
+- files
+- analysis
+- risk
+- suggestedVerifications
 
 Example:
 
@@ -114,10 +141,12 @@ npm run test
 
 ```txt
 src/
+  file-filter.ts
   analyzer.ts
   cli.ts
   git-diff.ts
   index.ts
+  review-summary.ts
   prompt-builder.ts
   report-writer.ts
 
@@ -129,7 +158,10 @@ templates/
 
 tests/
   analyzer.test.ts
+  file-filter.test.ts
+  report-writer.test.ts
   git-diff.test.ts
+  review-summary.test.ts
 ```
 
 ## Roadmap
@@ -137,7 +169,6 @@ tests/
 - Add GitHub Actions example
 - Add configurable review rules
 - Add OpenAI API integration
-- Add JSON output format
 - Add support for monorepo frontend projects
 
 ## Contributing

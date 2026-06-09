@@ -1,11 +1,22 @@
-import type { AnalysisResult } from './analyzer.js';
+import type { ReportContext } from './report-writer.js';
 
 const formatList = (files: string[]): string => {
   if (files.length === 0) return '- None';
   return files.map((file) => `- ${file}`).join('\n');
 };
 
-export const buildReviewPrompt = (analysis: AnalysisResult): string => {
+export const buildReviewPrompt = (context: ReportContext): string => {
+  const { analysis, risk, suggestedVerifications } = context;
+
+  const verification = suggestedVerifications
+    .map((suggestion) => `- ${suggestion.command} - ${suggestion.reason}`)
+    .join('\n');
+
+  const riskSummary = [
+    `Overall risk: ${risk.level} (score ${risk.score})`,
+    ...risk.reasons,
+  ].join('\n');
+
   return `You are reviewing a frontend pull request.
 
 Focus on:
@@ -40,6 +51,12 @@ ${formatList(analysis.configFiles)}
 
 Other files:
 ${formatList(analysis.otherFiles)}
+
+Risk:
+${riskSummary}
+
+Suggested verification:
+${verification}
 
 Please provide:
 1. High-risk issues

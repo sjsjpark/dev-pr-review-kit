@@ -4,7 +4,13 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { analyzeFiles } from './analyzer.js';
 import { collectChangedFilesFromGit } from './git-diff.js';
-import { createMarkdownReport } from './report-writer.js';
+import {
+  createJsonReport,
+  createMarkdownReport,
+  type ReportContext,
+} from './report-writer.js';
+import { assessReviewRisk, createSuggestedVerifications } from './review-summary.js';
+import { filterFiles, parsePatternList } from './file-filter.js';
 
 type InputFile = {
   files: string[];
@@ -18,11 +24,14 @@ const getArgValue = (name: string): string | undefined => {
 const inputPath = getArgValue('--input');
 const base = getArgValue('--base');
 const from = getArgValue('--from');
-const outputPath = getArgValue('--output') ?? 'pr-review-report.md';
+const format = getArgValue('--format')?.toLowerCase() || 'markdown';
+const include = getArgValue('--include');
+const exclude = getArgValue('--exclude');
+const explicitOutputPath = getArgValue('--output');
 
 if (!inputPath && !base && !from) {
   console.error(
-    'Usage: dev-pr-review-kit (--input examples/changed-files.json | --base main | --from HEAD~1) [--output report.md]',
+    'Usage: dev-pr-review-kit (--input examples/changed-files.json | --base main | --from HEAD~1) [--format markdown|md|json] [--include ...] [--exclude ...] [--output report.md]',
   );
   process.exit(1);
 }
@@ -31,6 +40,13 @@ if (inputPath && (base || from)) {
   console.error('Invalid options: use --input or git diff options, not both.');
   process.exit(1);
 }
+
+if (format !== 'markdown' && format !== 'md' && format !== 'json') {
+  console.error('Invalid format: use --format markdown|md|json');
+  process.exit(1);
+}
+
+const resolvedFormat = format === 'md' ? 'markdown' : format;
 
 const files = inputPath
   ? (() => {
@@ -46,9 +62,32 @@ const files = inputPath
     })()
   : collectChangedFilesFromGit({ base, from });
 
-const analysis = analyzeFiles(files);
-const report = createMarkdownReport(analysis);
+const filteredFiles = filterFiles(files, {
+  includePatterns: parsePatternList(include),
+  excludePatterns: parsePatternList(exclude),
+});
 
-writeFileSync(resolve(outputPath), report, 'utf-8');
+const analysis = analyzeFiles(filteredFiles);
+const risk = assessReviewRisk(analysis);
+const suggestedVerifications = createSuggestedVerifications(analysis);
+const reportContext: ReportContext = {
+  analysis,
+  files: filteredFiles,
+  risk,
+  suggestedVerifications,
+  generatedAt: new Date().toISOString(),
+};
 
-console.log(`PR review report generated: ${outputPath}`);
+const report =
+  resolvedFormat === 'json'
+    ? createJsonReport(reportContext)
+    : createMarkdownReport(reportContext);
+
+const resolvedOutputPath =
+  explicitOutputPath ?? (resolvedFormat === 'json'
+    ? 'pr-review-report.json'
+    : 'pr-review-report.md');
+
+writeFileSync(resolve(resolvedOutputPath), report, 'utf-8');
+
+console.log(`PR review report generated: ${resolvedOutputPath}`);
