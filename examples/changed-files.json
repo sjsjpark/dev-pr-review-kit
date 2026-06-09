@@ -1,0 +1,12 @@
+{
+  "files": [
+    "src/components/Button.tsx",
+    "src/components/UserCard.tsx",
+    "src/hooks/useUser.ts",
+    "src/api/userApi.ts",
+    "src/styles/global.css",
+    "src/components/Button.test.tsx",
+    "vite.config.ts",
+    "README.md"
+  ]
+}

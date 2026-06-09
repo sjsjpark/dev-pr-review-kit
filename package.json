@@ -1,0 +1,41 @@
+{
+  "name": "dev-pr-review-kit",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "A TypeScript CLI tool for generating structured PR review checklists and Codex-ready prompts.",
+  "main": "dist/index.js",
+  "bin": {
+    "dev-pr-review-kit": "dist/cli.js"
+  },
+  "scripts": {
+    "dev": "tsx src/cli.ts",
+    "build": "tsc",
+    "test": "vitest run"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sjsjpark/dev-pr-review-kit.git"
+  },
+  "author": "sjpark",
+  "license": "MIT",
+  "keywords": [
+    "codex",
+    "openai",
+    "typescript",
+    "cli",
+    "react",
+    "pull-request",
+    "code-review",
+    "automation"
+  ],
+  "bugs": {
+    "url": "https://github.com/sjsjpark/dev-pr-review-kit/issues"
+  },
+  "homepage": "https://github.com/sjsjpark/dev-pr-review-kit#readme",
+  "devDependencies": {
+    "@types/node": "^25.9.2",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
+  }
+}
