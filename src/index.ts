@@ -1,5 +1,6 @@
 export { analyzeFiles, countTotalFiles } from './analyzer.js';
 export { loadConfig, DEFAULT_REVIEW_KIT_CONFIG } from './config.js';
+export type { OpenAIReviewConfig } from './config.js';
 export { collectChangedFilesFromGit } from './git-diff.js';
 export {
   assessReviewRisk,

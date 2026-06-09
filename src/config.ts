@@ -9,10 +9,22 @@ import {
 } from './review-summary.js';
 
 const DEFAULT_CONFIG_FILE = '.pr-review-kit.json';
+const DEFAULT_OPENAI_TIMEOUT_MS = 30_000;
+const DEFAULT_OPENAI_TEMPERATURE = 0.2;
+const DEFAULT_OPENAI_MAX_TOKENS = 600;
 
 export type ReviewPolicyConfig = {
   riskWeights: RiskWeights;
   verificationCommands: VerificationCommands;
+};
+
+export type OpenAIReviewConfig = {
+  enabled: boolean;
+  apiKeyEnv: string;
+  model: string;
+  temperature: number;
+  maxTokens: number;
+  requestTimeoutMs: number;
 };
 
 export type SecurityPolicyConfig = SecurityPolicy;
@@ -22,6 +34,7 @@ export type ReviewKitConfig = {
   excludePatterns: string[];
   reviewPolicy: ReviewPolicyConfig;
   securityPolicy: SecurityPolicyConfig;
+  openaiReview: OpenAIReviewConfig;
 };
 
 type PartialReviewPolicyConfig = Partial<{
@@ -34,6 +47,7 @@ type ReviewKitConfigFile = Partial<{
   excludePatterns: string[];
   reviewPolicy: PartialReviewPolicyConfig;
   securityPolicy: Partial<SecurityPolicyConfig>;
+  openaiReview: Partial<OpenAIReviewConfig>;
 }>;
 
 const DEFAULT_CONFIG: ReviewKitConfig = {
@@ -50,6 +64,14 @@ const DEFAULT_CONFIG: ReviewKitConfig = {
     verificationCommands: DEFAULT_VERIFICATION_COMMANDS,
   },
   securityPolicy: DEFAULT_SECURITY_POLICY,
+  openaiReview: {
+    enabled: false,
+    apiKeyEnv: 'OPENAI_API_KEY',
+    model: 'gpt-4o-mini',
+    temperature: DEFAULT_OPENAI_TEMPERATURE,
+    maxTokens: DEFAULT_OPENAI_MAX_TOKENS,
+    requestTimeoutMs: DEFAULT_OPENAI_TIMEOUT_MS,
+  },
 };
 
 const normalizePatterns = (patterns: string[] | undefined): string[] =>
@@ -78,6 +100,13 @@ const createSecurityPolicyConfig = (
   ),
 });
 
+const createOpenAIReviewConfig = (
+  openaiReview?: Partial<OpenAIReviewConfig>,
+): OpenAIReviewConfig => ({
+  ...DEFAULT_CONFIG.openaiReview,
+  ...openaiReview,
+});
+
 const cloneConfig = (config: ReviewKitConfig): ReviewKitConfig => ({
   includePatterns: [...config.includePatterns],
   excludePatterns: [...config.excludePatterns],
@@ -89,6 +118,7 @@ const cloneConfig = (config: ReviewKitConfig): ReviewKitConfig => ({
     ...config.securityPolicy,
     suspiciousPatterns: [...config.securityPolicy.suspiciousPatterns],
   },
+  openaiReview: { ...config.openaiReview },
 });
 
 const buildConfig = (raw: ReviewKitConfigFile): ReviewKitConfig => ({
@@ -96,6 +126,7 @@ const buildConfig = (raw: ReviewKitConfigFile): ReviewKitConfig => ({
   excludePatterns: normalizePatterns(raw.excludePatterns),
   reviewPolicy: createReviewPolicyConfig(raw.reviewPolicy),
   securityPolicy: createSecurityPolicyConfig(raw.securityPolicy),
+  openaiReview: createOpenAIReviewConfig(raw.openaiReview),
 });
 
 export const loadConfig = (path?: string): ReviewKitConfig => {

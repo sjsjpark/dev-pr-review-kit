@@ -21,5 +21,13 @@
     "enabled": true,
     "riskWeight": 2,
     "suspiciousPatterns": ["auth", "token", "session", "secret", "api-key", "csrf", "credential"]
+  },
+  "openaiReview": {
+    "enabled": false,
+    "apiKeyEnv": "OPENAI_API_KEY",
+    "model": "gpt-4o-mini",
+    "temperature": 0.2,
+    "maxTokens": 600,
+    "requestTimeoutMs": 30000
   }
 }

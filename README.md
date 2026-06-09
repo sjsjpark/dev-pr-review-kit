@@ -27,6 +27,7 @@ The project was created to reduce repetitive review preparation work and improve
 - Suggests PR review risk level with reasons
 - Suggests verification commands
 - Detects security-sensitive file patterns and includes security signals in reports
+- Generates optional AI review suggestions (OpenAI)
 - Supports a simple JSON input format
 - Supports markdown/json output
 - Supports include/exclude pattern filtering for file sets
@@ -69,6 +70,18 @@ JSON output is also available:
 npm run dev -- --base main --format json --output report.json
 ```
 
+Enable AI review generation by adding OpenAI configuration and passing `--openai-review`:
+
+```bash
+npm run dev -- --base main --openai-review --format markdown --output pr-review-report.md
+```
+
+or set `openaiReview.enabled` to `true` in your config file:
+
+```bash
+npm run dev -- --base main
+```
+
 You can filter input files by pattern:
 
 ```bash
@@ -106,6 +119,7 @@ The CLI generates a Markdown report with:
 - Review checklist
 - Codex-ready review prompt
 - Suggested verification commands
+- AI review suggestions section (when enabled)
 
 JSON output includes:
 
@@ -116,6 +130,7 @@ JSON output includes:
 - risk
 - securitySignals
 - suggestedVerifications
+- aiReview
 
 Example:
 
@@ -178,8 +193,27 @@ tests/
 
 - Add GitHub Actions example
 - Add advanced security policy profiles (team presets, compliance modes)
-- Add OpenAI API integration
 - Add support for monorepo frontend projects
+
+## OpenAI Review Configuration
+
+`.pr-review-kit.json` example:
+
+```json
+{
+  "openaiReview": {
+    "enabled": false,
+    "apiKeyEnv": "OPENAI_API_KEY",
+    "model": "gpt-4o-mini",
+    "temperature": 0.2,
+    "maxTokens": 600,
+    "requestTimeoutMs": 30000
+  }
+}
+```
+
+`apiKeyEnv` points to the environment variable name containing the OpenAI API key.  
+The CLI also accepts `--openai-review` to run AI review for that command only.
 
 ## Contributing
 

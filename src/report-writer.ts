@@ -32,12 +32,21 @@ const formatSecurity = (signals: SecurityMatch[]): string => {
   return `## Security Signals\n${body}`;
 };
 
+const formatAiReview = (aiReview: string | undefined): string => {
+  if (!aiReview) {
+    return '';
+  }
+
+  return `## AI Review Suggestions\n${aiReview}\n`;
+};
+
 export type ReportContext = {
   analysis: AnalysisResult;
   files: string[];
   risk: RiskAssessment;
   securitySignals: SecurityMatch[];
   suggestedVerifications: VerificationSuggestion[];
+  aiReview?: string;
   generatedAt: string;
 };
 
@@ -84,6 +93,8 @@ ${formatVerification(suggestedVerifications)}
 
 ${formatSecurity(context.securitySignals)}
 
+${formatAiReview(context.aiReview)}
+
 ## Review Checklist
 
 - [ ] Are TypeScript types explicit and safe?
@@ -111,6 +122,7 @@ export const createJsonReport = (context: ReportContext): string => {
     analysis: context.analysis,
     securitySignals: context.securitySignals,
     risk: context.risk,
+    aiReview: context.aiReview,
     suggestedVerifications: context.suggestedVerifications,
   };
 

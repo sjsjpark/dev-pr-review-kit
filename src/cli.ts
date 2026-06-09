@@ -16,6 +16,8 @@ import {
   createSuggestedVerifications,
 } from './review-summary.js';
 import { filterFiles, parsePatternList } from './file-filter.js';
+import { generateOpenAIReview } from './openai-review.js';
+import { buildReviewPrompt } from './prompt-builder.js';
 
 type InputFile = {
   files: string[];
@@ -26,99 +28,138 @@ const getArgValue = (name: string): string | undefined => {
   return index >= 0 ? process.argv[index + 1] : undefined;
 };
 
-const inputPath = getArgValue('--input');
-const base = getArgValue('--base');
-const from = getArgValue('--from');
-const format = getArgValue('--format')?.toLowerCase() || 'markdown';
-const include = getArgValue('--include');
-const exclude = getArgValue('--exclude');
-const configPath = getArgValue('--config');
-const explicitOutputPath = getArgValue('--output');
+const readReportBody = (inputPath?: string, base?: string, from?: string): string[] => {
+  if (inputPath) {
+    const raw = readFileSync(resolve(inputPath), 'utf-8');
+    const parsed = JSON.parse(raw) as InputFile;
 
-if (!inputPath && !base && !from) {
-  console.error(
-    'Usage: dev-pr-review-kit (--input examples/changed-files.json | --base main | --from HEAD~1) [--config path] [--format markdown|md|json] [--include ...] [--exclude ...] [--output report.md]',
-  );
-  process.exit(1);
-}
+    if (!Array.isArray(parsed.files)) {
+      console.error('Invalid input: "files" must be an array.');
+      process.exit(1);
+    }
 
-if (inputPath && (base || from)) {
-  console.error('Invalid options: use --input or git diff options, not both.');
-  process.exit(1);
-}
-
-if (format !== 'markdown' && format !== 'md' && format !== 'json') {
-  console.error('Invalid format: use --format markdown|md|json');
-  process.exit(1);
-}
-
-const resolvedFormat = format === 'md' ? 'markdown' : format;
-
-const files = inputPath
-  ? (() => {
-      const raw = readFileSync(resolve(inputPath), 'utf-8');
-      const parsed = JSON.parse(raw) as InputFile;
-
-      if (!Array.isArray(parsed.files)) {
-        console.error('Invalid input: "files" must be an array.');
-        process.exit(1);
-      }
-
-      return parsed.files;
-    })()
-  : collectChangedFilesFromGit({ base, from });
-
-const config = (() => {
-  try {
-    return loadConfig(configPath ?? undefined);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Invalid config file.';
-    console.error(message);
-    process.exit(1);
+    return parsed.files;
   }
-})();
 
-const includePatterns = include === undefined ? config.includePatterns : parsePatternList(include);
-const excludePatterns = exclude === undefined ? config.excludePatterns : parsePatternList(exclude);
-
-const filteredFiles = filterFiles(files, {
-  includePatterns,
-  excludePatterns,
-});
-
-const analysis = analyzeFiles(filteredFiles);
-const securitySignals = collectSecuritySignals(analysis, config.securityPolicy);
-const risk = assessReviewRisk(
-  analysis,
-  config.reviewPolicy.riskWeights,
-  config.securityPolicy,
-  securitySignals,
-);
-const suggestedVerifications = createSuggestedVerifications(
-  analysis,
-  config.reviewPolicy.verificationCommands,
-  config.securityPolicy,
-  securitySignals,
-);
-const reportContext: ReportContext = {
-  analysis,
-  files: filteredFiles,
-  risk,
-  securitySignals,
-  suggestedVerifications,
-  generatedAt: new Date().toISOString(),
+  return collectChangedFilesFromGit({ base, from });
 };
 
-const report =
-  resolvedFormat === 'json'
-    ? createJsonReport(reportContext)
-    : createMarkdownReport(reportContext);
+const main = async () => {
+  const inputPath = getArgValue('--input');
+  const base = getArgValue('--base');
+  const from = getArgValue('--from');
+  const format = getArgValue('--format')?.toLowerCase() || 'markdown';
+  const include = getArgValue('--include');
+  const exclude = getArgValue('--exclude');
+  const configPath = getArgValue('--config');
+  const explicitOutputPath = getArgValue('--output');
+  const enableOpenAI = process.argv.includes('--openai-review');
 
-const resolvedOutputPath =
-  explicitOutputPath ?? (resolvedFormat === 'json'
-    ? 'pr-review-report.json'
-    : 'pr-review-report.md');
+  if (!inputPath && !base && !from) {
+    console.error(
+      'Usage: dev-pr-review-kit (--input examples/changed-files.json | --base main | --from HEAD~1) [--config path] [--format markdown|md|json] [--include ...] [--exclude ...] [--openai-review] [--output report.md]',
+    );
+    process.exit(1);
+  }
 
-writeFileSync(resolve(resolvedOutputPath), report, 'utf-8');
+  if (inputPath && (base || from)) {
+    console.error('Invalid options: use --input or git diff options, not both.');
+    process.exit(1);
+  }
 
-console.log(`PR review report generated: ${resolvedOutputPath}`);
+  if (format !== 'markdown' && format !== 'md' && format !== 'json') {
+    console.error('Invalid format: use --format markdown|md|json');
+    process.exit(1);
+  }
+
+  const resolvedFormat = format === 'md' ? 'markdown' : format;
+  const files = readReportBody(inputPath, base, from);
+  const config = (() => {
+    try {
+      return loadConfig(configPath ?? undefined);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Invalid config file.';
+      console.error(message);
+      process.exit(1);
+    }
+  })();
+
+  const includePatterns = include === undefined ? config.includePatterns : parsePatternList(include);
+  const excludePatterns = exclude === undefined ? config.excludePatterns : parsePatternList(exclude);
+  const filteredFiles = filterFiles(files, {
+    includePatterns,
+    excludePatterns,
+  });
+
+  const analysis = analyzeFiles(filteredFiles);
+  const securitySignals = collectSecuritySignals(analysis, config.securityPolicy);
+  const risk = assessReviewRisk(
+    analysis,
+    config.reviewPolicy.riskWeights,
+    config.securityPolicy,
+    securitySignals,
+  );
+  const suggestedVerifications = createSuggestedVerifications(
+    analysis,
+    config.reviewPolicy.verificationCommands,
+    config.securityPolicy,
+    securitySignals,
+  );
+
+  const reviewPrompt = buildReviewPrompt({
+    analysis,
+    files: filteredFiles,
+    risk,
+    securitySignals,
+    suggestedVerifications,
+    generatedAt: new Date().toISOString(),
+  });
+
+  const openAIConfig = {
+    ...config.openaiReview,
+    enabled: enableOpenAI || config.openaiReview.enabled,
+  };
+  let generatedAiReview: string | undefined;
+
+  if (openAIConfig.enabled) {
+    const apiKey = process.env[openAIConfig.apiKeyEnv];
+    if (!apiKey) {
+      console.warn(
+        `OPENAI Review is enabled, but environment variable ${openAIConfig.apiKeyEnv} is missing.`
+        + ` Skipping AI review.`,
+      );
+    } else {
+      try {
+        generatedAiReview = await generateOpenAIReview(reviewPrompt, openAIConfig, apiKey);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown OpenAI error.';
+        console.warn(`Skipping AI review due OpenAI error: ${message}`);
+      }
+    }
+  }
+
+  const reportContext: ReportContext = {
+    analysis,
+    files: filteredFiles,
+    risk,
+    securitySignals,
+    suggestedVerifications,
+    aiReview: generatedAiReview || undefined,
+    generatedAt: new Date().toISOString(),
+  };
+
+  const report =
+    resolvedFormat === 'json'
+      ? createJsonReport(reportContext)
+      : createMarkdownReport(reportContext);
+
+  const resolvedOutputPath =
+    explicitOutputPath ?? (resolvedFormat === 'json'
+      ? 'pr-review-report.json'
+      : 'pr-review-report.md');
+
+  writeFileSync(resolve(resolvedOutputPath), report, 'utf-8');
+  console.log(`PR review report generated: ${resolvedOutputPath}`);
+};
+
+await main();
